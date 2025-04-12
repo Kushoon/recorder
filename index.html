@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+    />
     <title>Screen Recorder with Camera Overlay</title>
     <style>
       * {
@@ -293,6 +297,17 @@
           preview.srcObject = screenStream;
           camera.srcObject = cameraStream;
 
+          // Make sure the preview is visible and playing
+          preview.onloadedmetadata = () => {
+            preview
+              .play()
+              .catch((e) => console.error("Preview play error:", e));
+          };
+
+          camera.onloadedmetadata = () => {
+            camera.play().catch((e) => console.error("Camera play error:", e));
+          };
+
           // Create a combined stream with all tracks
           const tracks = [
             ...screenStream.getVideoTracks(),
@@ -301,10 +316,24 @@
 
           combinedStream = new MediaStream(tracks);
 
-          // Initialize MediaRecorder
-          mediaRecorder = new MediaRecorder(combinedStream, {
-            mimeType: "video/webm;codecs=vp9,opus",
-          });
+          // Initialize MediaRecorder with fallback options
+          let options = {};
+          try {
+            // Try with preferred codec
+            if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
+              options = { mimeType: "video/webm;codecs=vp9,opus" };
+            } else if (
+              MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+            ) {
+              options = { mimeType: "video/webm;codecs=vp8,opus" };
+            } else if (MediaRecorder.isTypeSupported("video/webm")) {
+              options = { mimeType: "video/webm" };
+            }
+          } catch (e) {
+            console.error("Codec error:", e);
+          }
+
+          mediaRecorder = new MediaRecorder(combinedStream, options);
 
           // Handle data available event
           mediaRecorder.ondataavailable = (e) => {
@@ -323,6 +352,11 @@
             // Enable download button
             downloadBtn.disabled = false;
           };
+
+          // Log stream info for debugging
+          logStreamInfo(screenStream, "Screen");
+          logStreamInfo(cameraStream, "Camera");
+          logStreamInfo(combinedStream, "Combined");
 
           // Start recording
           mediaRecorder.start(1000); // Collect data every second
@@ -427,8 +461,18 @@
           status.textContent =
             "Your browser does not support screen recording.";
           startBtn.disabled = true;
+        } else {
+          status.textContent =
+            'Ready to record. Click "Start Recording" to begin.';
         }
       });
+
+      // Debugging logs to help troubleshoot
+      function logStreamInfo(stream, name) {
+        console.log(`${name} stream:`, stream);
+        console.log(`${name} video tracks:`, stream.getVideoTracks());
+        console.log(`${name} audio tracks:`, stream.getAudioTracks());
+      }
     </script>
   </body>
 </html>
